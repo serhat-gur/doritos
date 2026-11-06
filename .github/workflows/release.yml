@@ -1,0 +1,67 @@
+# Doritos: Windows kurulumunu derler ve GitHub Releases'a yayınlar.
+# Kaynak kod depoda source.tar.gz olarak durur. apps/desktop/package.json
+# içindeki sürüm için henüz yayın yoksa yeni sürüm çıkar; varsa hiçbir şey yapmaz.
+# Kurulu uygulamalar 6 saatte bir (ve açılışta) buradan güncellemeyi denetler.
+name: Yayın
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Kaynağı aç
+        shell: bash
+        run: |
+          mkdir src
+          tar -xzf source.tar.gz -C src
+
+      - name: Sürümü oku
+        id: ver
+        shell: bash
+        working-directory: src
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(node -p "require('./apps/desktop/package.json').version")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VER" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$VER zaten yayında, atlanıyor"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.ver.outputs.skip != 'true'
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        if: steps.ver.outputs.skip != 'true'
+        with:
+          node-version: 22
+
+      - name: Bağımlılıklar
+        if: steps.ver.outputs.skip != 'true'
+        working-directory: src
+        run: pnpm install --frozen-lockfile --filter "@yanki/desktop..."
+
+      - name: Derle ve yayınla
+        if: steps.ver.outputs.skip != 'true'
+        working-directory: src/apps/desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pnpm exec electron-vite build
+          pnpm exec electron-builder --win nsis --x64 --publish always
