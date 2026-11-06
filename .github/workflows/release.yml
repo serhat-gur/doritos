@@ -62,6 +62,13 @@ jobs:
         working-directory: src/apps/desktop
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
+          VER="${{ steps.ver.outputs.version }}"
           pnpm exec electron-vite build
-          pnpm exec electron-builder --win nsis --x64 --publish always
+          pnpm exec electron-builder --win nsis --x64 --publish never
+          ls release
+          gh release create "v$VER" \
+            "release/Doritos-$VER.exe" "release/Doritos-$VER.exe.blockmap" release/latest.yml \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Doritos $VER" --notes "Kurulum: Doritos-$VER.exe dosyasını indirip çalıştır. Kurulu uygulamalar kendiliğinden güncellenir."
